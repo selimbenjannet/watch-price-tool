@@ -3,255 +3,334 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>Watch Price Lookup</title>
+<title>Ben Jannet & Co — Price Lookup</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⌚</text></svg>">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #0f0f1a;
-    --card: #1a1a2e;
-    --accent: #c9a84c;
-    --accent-dim: rgba(201,168,76,0.15);
-    --text: #e8e8e8;
-    --text-muted: #7a7a8f;
-    --border: #2a2a3e;
-    --input-bg: #12122a;
-    --error: #ef4444;
-    --radius: 14px;
+    --gold: #ae8400;
+    --gold-light: #c9a030;
+    --gold-dim: rgba(174,132,0,0.08);
+    --gold-border: rgba(174,132,0,0.25);
+    --bg: #ffffff;
+    --card: #fafaf8;
+    --text: #232323;
+    --text-muted: #7a7a7a;
+    --border: #e8e5de;
+    --input-bg: #ffffff;
+    --input-border: #d5d0c6;
+    --radius: 12px;
+    --shadow: 0 2px 12px rgba(0,0,0,0.06);
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    background: var(--bg);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #f5f4f0;
     color: var(--text);
-    min-height: 100vh;
-    min-height: 100dvh;
+    min-height: 100vh; min-height: 100dvh;
   }
-  .container { max-width: 480px; margin: 0 auto; padding: 16px 16px 120px; }
+  .container { max-width: 480px; margin: 0 auto; padding: 0 16px 120px; }
 
-  /* Header */
-  .header {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 16px 0 24px;
+  /* ─── Header ─── */
+  .header-bar {
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 16px;
+    position: sticky; top: 0; z-index: 100;
   }
-  .header h1 {
-    font-size: 18px; font-weight: 700; color: var(--accent);
-    letter-spacing: 2px; text-transform: uppercase;
+  .header-inner {
+    max-width: 480px; margin: 0 auto;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .logo-area { display: flex; align-items: center; gap: 12px; }
+  .logo-img {
+    height: 32px; width: auto; object-fit: contain;
+  }
+  .logo-divider {
+    width: 1px; height: 24px; background: var(--border);
+  }
+  .logo-subtitle {
+    font-family: 'Playfair Display', Georgia, serif;
+    font-size: 13px; color: var(--gold); font-weight: 600;
+    letter-spacing: 0.5px;
   }
   .settings-btn {
     background: none; border: 1px solid var(--border); color: var(--text-muted);
-    width: 38px; height: 38px; border-radius: 50%; cursor: pointer; font-size: 16px;
+    width: 36px; height: 36px; border-radius: 50%; cursor: pointer; font-size: 15px;
     display: flex; align-items: center; justify-content: center; transition: all .2s;
   }
-  .settings-btn:hover, .settings-btn.active { border-color: var(--accent); color: var(--accent); }
+  .settings-btn:hover, .settings-btn.active {
+    border-color: var(--gold); color: var(--gold);
+  }
 
-  /* Settings */
+  /* ─── Settings Panel ─── */
   .settings-panel {
-    display: none; background: var(--card); border: 1px solid var(--border);
-    border-radius: var(--radius); padding: 16px; margin-bottom: 16px;
+    display: none; background: var(--bg); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 16px; margin: 16px 0 0;
+    box-shadow: var(--shadow);
   }
   .settings-panel.show { display: block; }
-  .settings-panel label { font-size: 12px; color: var(--text-muted); display: block; margin-bottom: 6px; text-transform: uppercase; letter-spacing: .5px; }
+  .settings-label {
+    font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 8px;
+    text-transform: uppercase; letter-spacing: 1px; font-weight: 600;
+  }
   .settings-row { display: flex; align-items: center; gap: 10px; }
   .settings-panel input {
-    width: 100px; padding: 10px; background: var(--input-bg); border: 1px solid var(--border);
-    border-radius: 8px; color: var(--text); font-size: 16px;
+    width: 100px; padding: 10px 12px; background: var(--input-bg);
+    border: 1px solid var(--input-border); border-radius: 8px;
+    color: var(--text); font-size: 16px; font-weight: 500;
   }
-  .settings-panel input:focus { outline: none; border-color: var(--accent); }
+  .settings-panel input:focus { outline: none; border-color: var(--gold); }
   .save-btn {
-    padding: 10px 18px; background: var(--accent); color: #0f0f1a; border: none;
+    padding: 10px 20px; background: var(--gold); color: #fff; border: none;
     border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 13px;
+    letter-spacing: .3px;
   }
+  .save-btn:hover { background: var(--gold-light); }
 
-  /* Main search card */
+  /* ─── Search Card ─── */
   .search-card {
-    background: var(--card); border: 1px solid var(--border);
-    border-radius: var(--radius); padding: 20px; margin-bottom: 16px;
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 24px 20px; margin-top: 20px;
+    box-shadow: var(--shadow);
   }
-  .search-card label {
-    font-size: 12px; color: var(--text-muted); display: block; margin-bottom: 8px;
-    text-transform: uppercase; letter-spacing: .5px;
+  .search-label {
+    font-family: 'Playfair Display', Georgia, serif;
+    font-size: 18px; color: var(--text); margin-bottom: 4px; font-weight: 600;
+  }
+  .search-sublabel {
+    font-size: 12px; color: var(--text-muted); margin-bottom: 16px;
   }
   .search-row { display: flex; gap: 10px; }
   .search-input {
-    flex: 1; padding: 16px; background: var(--input-bg); border: 1px solid var(--border);
-    border-radius: 10px; color: var(--text); font-size: 18px; font-weight: 500;
+    flex: 1; padding: 16px; background: var(--input-bg);
+    border: 1.5px solid var(--input-border); border-radius: 10px;
+    color: var(--text); font-size: 18px; font-weight: 500;
     transition: border-color .2s;
   }
-  .search-input:focus { outline: none; border-color: var(--accent); }
-  .search-input::placeholder { color: #3a3a50; }
+  .search-input:focus { outline: none; border-color: var(--gold); box-shadow: 0 0 0 3px var(--gold-dim); }
+  .search-input::placeholder { color: #bbb; }
   .search-btn {
-    padding: 16px 24px; background: var(--accent); color: #0f0f1a; border: none;
-    border-radius: 10px; font-weight: 700; cursor: pointer; font-size: 16px;
-    transition: opacity .2s; white-space: nowrap;
+    padding: 16px 28px; background: var(--gold); color: #fff; border: none;
+    border-radius: 10px; font-weight: 700; cursor: pointer; font-size: 15px;
+    transition: all .2s; white-space: nowrap; letter-spacing: .5px;
   }
-  .search-btn:disabled { opacity: .4; cursor: not-allowed; }
-  .search-btn:not(:disabled):hover { opacity: .9; }
+  .search-btn:disabled { opacity: .35; cursor: not-allowed; }
+  .search-btn:not(:disabled):hover { background: var(--gold-light); }
 
   .brand-hint {
-    margin-top: 10px; font-size: 12px; color: var(--text-muted);
+    margin-top: 12px; font-size: 12px; color: var(--text-muted);
     display: flex; align-items: center; gap: 6px;
   }
   .brand-badge {
-    display: inline-block; padding: 2px 8px; background: var(--accent-dim);
-    color: var(--accent); border-radius: 4px; font-weight: 600; font-size: 11px;
+    display: inline-block; padding: 3px 10px; background: var(--gold-dim);
+    border: 1px solid var(--gold-border); color: var(--gold);
+    border-radius: 20px; font-weight: 600; font-size: 11px;
     text-transform: uppercase; letter-spacing: .5px;
   }
 
-  /* Loading */
-  .loading {
-    display: none; text-align: center; padding: 40px 20px;
-  }
+  /* ─── Loading ─── */
+  .loading { display: none; text-align: center; padding: 40px 20px; }
   .loading.show { display: block; }
   .spinner {
-    width: 36px; height: 36px; border: 3px solid var(--border);
-    border-top-color: var(--accent); border-radius: 50%;
+    width: 32px; height: 32px; border: 3px solid var(--border);
+    border-top-color: var(--gold); border-radius: 50%;
     animation: spin .8s linear infinite; margin: 0 auto 14px;
   }
   @keyframes spin { to { transform: rotate(360deg); } }
-  .loading-text { color: var(--text-muted); font-size: 14px; }
+  .loading-text { color: var(--text-muted); font-size: 13px; }
 
-  /* Result card */
+  /* ─── Result Card ─── */
   .result-card {
-    display: none; background: var(--card); border: 2px solid var(--accent);
-    border-radius: var(--radius); padding: 28px 20px; text-align: center;
-    margin-bottom: 16px; animation: fadeUp .3s ease;
+    display: none; background: var(--bg);
+    border: 2px solid var(--gold); border-radius: var(--radius);
+    padding: 32px 20px; text-align: center; margin-top: 16px;
+    box-shadow: 0 4px 24px rgba(174,132,0,0.1); animation: fadeUp .3s ease;
   }
   .result-card.show { display: block; }
   .result-watch-name {
-    font-size: 13px; color: var(--text-muted); margin-bottom: 4px;
-    text-transform: uppercase; letter-spacing: .5px;
+    font-size: 11px; color: var(--gold); margin-bottom: 2px;
+    text-transform: uppercase; letter-spacing: 1.5px; font-weight: 600;
   }
   .result-ref {
-    font-size: 15px; color: var(--text); margin-bottom: 16px; font-weight: 500;
+    font-family: 'Playfair Display', Georgia, serif;
+    font-size: 16px; color: var(--text); margin-bottom: 20px; font-weight: 400;
+  }
+  .price-label {
+    font-size: 10px; color: var(--text-muted); text-transform: uppercase;
+    letter-spacing: 1.5px; margin-bottom: 6px; font-weight: 600;
   }
   .result-tnd {
-    font-size: 48px; font-weight: 800; color: var(--accent);
+    font-family: 'Playfair Display', Georgia, serif;
+    font-size: 52px; font-weight: 700; color: var(--text);
     letter-spacing: 1px; line-height: 1;
   }
-  .result-tnd small { font-size: 22px; font-weight: 600; }
+  .result-tnd small {
+    font-size: 20px; font-weight: 400; color: var(--gold);
+    margin-left: 4px;
+  }
   .result-detail {
-    font-size: 12px; color: var(--text-muted); margin-top: 10px; line-height: 1.5;
+    font-size: 11px; color: var(--text-muted); margin-top: 14px;
+    line-height: 1.6; padding-top: 14px; border-top: 1px solid var(--border);
   }
 
-  /* Fallback card */
+  /* ─── Fallback Card ─── */
   .fallback-card {
-    display: none; background: var(--card); border: 1px solid var(--border);
-    border-radius: var(--radius); padding: 20px; margin-bottom: 16px;
-    animation: fadeUp .3s ease;
+    display: none; background: var(--bg); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 24px 20px; margin-top: 16px;
+    box-shadow: var(--shadow); animation: fadeUp .3s ease;
   }
   .fallback-card.show { display: block; }
-  .fallback-title { font-size: 14px; color: var(--text); margin-bottom: 12px; font-weight: 600; }
-  .fallback-desc { font-size: 13px; color: var(--text-muted); margin-bottom: 14px; line-height: 1.5; }
+  .fallback-title {
+    font-family: 'Playfair Display', Georgia, serif;
+    font-size: 16px; color: var(--text); margin-bottom: 8px; font-weight: 600;
+  }
+  .fallback-desc { font-size: 13px; color: var(--text-muted); margin-bottom: 16px; line-height: 1.5; }
   .fallback-link {
-    display: block; width: 100%; padding: 14px; background: transparent;
-    border: 2px solid var(--accent); border-radius: 10px; color: var(--accent);
+    display: block; width: 100%; padding: 14px; background: var(--gold);
+    border: none; border-radius: 10px; color: #fff;
     font-size: 14px; font-weight: 600; text-align: center; text-decoration: none;
-    margin-bottom: 16px; transition: background .2s;
+    margin-bottom: 20px; transition: background .2s; letter-spacing: .3px;
   }
-  .fallback-link:hover { background: var(--accent-dim); }
+  .fallback-link:hover { background: var(--gold-light); }
   .fallback-divider {
-    text-align: center; color: var(--text-muted); font-size: 11px; margin: 14px 0;
-    text-transform: uppercase; letter-spacing: 1px;
+    text-align: center; color: var(--text-muted); font-size: 10px; margin: 16px 0;
+    text-transform: uppercase; letter-spacing: 2px; font-weight: 600;
+    position: relative;
   }
+  .fallback-divider::before, .fallback-divider::after {
+    content: ''; position: absolute; top: 50%; width: calc(50% - 60px);
+    height: 1px; background: var(--border);
+  }
+  .fallback-divider::before { left: 0; }
+  .fallback-divider::after { right: 0; }
   .manual-input-group { margin-bottom: 12px; }
-  .manual-input-group label { font-size: 12px; color: var(--text-muted); display: block; margin-bottom: 6px; }
+  .manual-input-group label {
+    font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 6px;
+    text-transform: uppercase; letter-spacing: .5px;
+  }
   .manual-input {
-    width: 100%; padding: 14px; background: var(--input-bg); border: 1px solid var(--border);
-    border-radius: 10px; color: var(--text); font-size: 18px; text-align: center;
+    width: 100%; padding: 14px; background: var(--input-bg);
+    border: 1.5px solid var(--input-border); border-radius: 10px;
+    color: var(--text); font-size: 20px; text-align: center; font-weight: 500;
   }
-  .manual-input:focus { outline: none; border-color: var(--accent); }
-
-  /* Manual result */
-  .manual-result {
-    display: none; text-align: center; padding: 16px 0;
-  }
+  .manual-input:focus { outline: none; border-color: var(--gold); box-shadow: 0 0 0 3px var(--gold-dim); }
+  .manual-result { display: none; text-align: center; padding: 20px 0 4px; }
   .manual-result.show { display: block; }
-  .manual-tnd { font-size: 36px; font-weight: 800; color: var(--accent); }
-  .manual-tnd small { font-size: 18px; }
-  .manual-detail { font-size: 12px; color: var(--text-muted); margin-top: 6px; }
+  .manual-tnd {
+    font-family: 'Playfair Display', Georgia, serif;
+    font-size: 40px; font-weight: 700; color: var(--text);
+  }
+  .manual-tnd small { font-size: 18px; color: var(--gold); font-weight: 400; }
+  .manual-detail { font-size: 11px; color: var(--text-muted); margin-top: 6px; }
 
-  /* History */
+  /* ─── History ─── */
   .history-card {
-    background: var(--card); border: 1px solid var(--border);
-    border-radius: var(--radius); padding: 16px;
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 18px 20px; margin-top: 20px;
+    box-shadow: var(--shadow);
   }
   .history-title {
-    font-size: 12px; color: var(--text-muted); text-transform: uppercase;
-    letter-spacing: 1px; margin-bottom: 12px;
+    font-size: 10px; color: var(--text-muted); text-transform: uppercase;
+    letter-spacing: 1.5px; margin-bottom: 12px; font-weight: 600;
     display: flex; justify-content: space-between; align-items: center;
   }
-  .clear-btn { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 11px; text-decoration: underline; }
+  .clear-btn {
+    background: none; border: none; color: var(--text-muted);
+    cursor: pointer; font-size: 11px; text-decoration: underline;
+  }
   .history-list { list-style: none; }
   .history-item {
     display: flex; justify-content: space-between; align-items: center;
     padding: 10px 0; border-bottom: 1px solid var(--border); cursor: pointer;
     transition: opacity .2s;
   }
-  .history-item:hover { opacity: .7; }
+  .history-item:hover { opacity: .6; }
   .history-item:last-child { border-bottom: none; }
-  .history-brand { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .5px; }
-  .history-ref { font-size: 13px; color: var(--text); font-weight: 500; }
-  .history-price { font-size: 15px; color: var(--accent); font-weight: 700; }
-  .empty-msg { color: var(--text-muted); font-size: 13px; text-align: center; padding: 10px; }
+  .history-brand {
+    font-size: 9px; color: var(--gold); text-transform: uppercase;
+    letter-spacing: 1px; font-weight: 600;
+  }
+  .history-ref { font-size: 13px; color: var(--text); font-weight: 500; margin-top: 1px; }
+  .history-price {
+    font-family: 'Playfair Display', Georgia, serif;
+    font-size: 16px; color: var(--text); font-weight: 600;
+  }
+  .empty-msg { color: var(--text-muted); font-size: 12px; text-align: center; padding: 8px; }
 
   @keyframes fadeUp {
     from { opacity: 0; transform: translateY(10px); }
     to { opacity: 1; transform: translateY(0); }
   }
+
+  /* ─── Footer ─── */
+  .footer {
+    text-align: center; padding: 24px 16px 8px;
+    font-size: 10px; color: #c0bdb5; letter-spacing: .5px;
+  }
 </style>
 </head>
 <body>
-<div class="container">
 
-  <!-- Header -->
-  <div class="header">
-    <h1>⌚ Price Lookup</h1>
-    <button class="settings-btn" onclick="toggleSettings()" title="Settings">⚙</button>
+  <!-- Sticky Header -->
+  <div class="header-bar">
+    <div class="header-inner">
+      <div class="logo-area">
+        <img class="logo-img" src="https://www.benjannetandco.com/img/ben-jannet-logo-1740564907.jpg" alt="Ben Jannet & Co" onerror="this.style.display='none'">
+        <div class="logo-divider"></div>
+        <span class="logo-subtitle">Price Lookup</span>
+      </div>
+      <button class="settings-btn" onclick="toggleSettings()" title="Settings">&#9881;</button>
+    </div>
   </div>
+
+<div class="container">
 
   <!-- Settings -->
   <div class="settings-panel" id="settingsPanel">
-    <label>Conversion rate (EUR → TND)</label>
+    <label class="settings-label">Taux de conversion (EUR &rarr; TND)</label>
     <div class="settings-row">
       <input type="number" id="rateInput" step="0.01" min="0.01">
-      <button class="save-btn" onclick="saveRate()">Save</button>
+      <button class="save-btn" onclick="saveRate()">Enregistrer</button>
     </div>
   </div>
 
   <!-- Search -->
   <div class="search-card">
-    <label>Watch Reference</label>
+    <div class="search-label">Recherche de prix</div>
+    <div class="search-sublabel">Entrez la r&eacute;f&eacute;rence de la montre</div>
     <div class="search-row">
-      <input class="search-input" id="refInput" type="text" placeholder="e.g. 278602-3003" autocomplete="off" autocapitalize="characters" oninput="onRefInput()">
+      <input class="search-input" id="refInput" type="text" placeholder="ex. 278602-3003" autocomplete="off" autocapitalize="characters" oninput="onRefInput()">
       <button class="search-btn" id="searchBtn" onclick="lookupPrice()" disabled>GO</button>
     </div>
     <div class="brand-hint" id="brandHint" style="display:none">
-      Detected: <span class="brand-badge" id="brandBadge"></span>
+      D&eacute;tect&eacute; : <span class="brand-badge" id="brandBadge"></span>
     </div>
   </div>
 
   <!-- Loading -->
   <div class="loading" id="loadingBox">
     <div class="spinner"></div>
-    <div class="loading-text">Searching <span id="loadingBrand"></span> website...</div>
+    <div class="loading-text">Recherche sur le site <span id="loadingBrand"></span>...</div>
   </div>
 
   <!-- Auto result -->
   <div class="result-card" id="resultCard">
     <div class="result-watch-name" id="resultName"></div>
     <div class="result-ref" id="resultRef"></div>
+    <div class="price-label">Prix en Tunisie</div>
     <div class="result-tnd" id="resultTnd"></div>
     <div class="result-detail" id="resultDetail"></div>
   </div>
 
   <!-- Fallback -->
   <div class="fallback-card" id="fallbackCard">
-    <div class="fallback-title">Price not found automatically</div>
-    <div class="fallback-desc">Open the brand website to check the EUR price, then enter it below:</div>
-    <a class="fallback-link" id="fallbackLink" href="#" target="_blank" rel="noopener">Open on brand website →</a>
-    <div class="fallback-divider">then enter the EUR price</div>
+    <div class="fallback-title">Prix non trouv&eacute; automatiquement</div>
+    <div class="fallback-desc">Ouvrez le site de la marque pour v&eacute;rifier le prix EUR, puis saisissez-le ci-dessous :</div>
+    <a class="fallback-link" id="fallbackLink" href="#" target="_blank" rel="noopener">Ouvrir le site de la marque &rarr;</a>
+    <div class="fallback-divider">puis entrez le prix</div>
     <div class="manual-input-group">
-      <input class="manual-input" id="manualEur" type="number" placeholder="EUR price" oninput="manualCalc()">
+      <input class="manual-input" id="manualEur" type="number" placeholder="Prix en EUR" oninput="manualCalc()">
     </div>
     <div class="manual-result" id="manualResult">
       <div class="manual-tnd" id="manualTnd"></div>
@@ -262,14 +341,15 @@
   <!-- History -->
   <div class="history-card">
     <div class="history-title">
-      <span>Recent Lookups</span>
-      <button class="clear-btn" id="clearBtn" onclick="clearHistory()" style="display:none">Clear</button>
+      <span>Historique</span>
+      <button class="clear-btn" id="clearBtn" onclick="clearHistory()" style="display:none">Effacer</button>
     </div>
     <ul class="history-list" id="historyList">
-      <li class="empty-msg">No recent lookups</li>
+      <li class="empty-msg">Aucune recherche r&eacute;cente</li>
     </ul>
   </div>
 
+  <div class="footer">BEN JANNET &amp; CO &mdash; Outil interne</div>
 </div>
 
 <script>
@@ -314,11 +394,9 @@
       btn.disabled = false;
     } else {
       hint.style.display = ref.length >= 3 ? 'flex' : 'none';
-      badge.textContent = ref.length >= 3 ? 'Unknown brand' : '';
+      badge.textContent = ref.length >= 3 ? 'Marque inconnue' : '';
       btn.disabled = ref.length < 3;
     }
-
-    // Hide previous results
     hide('resultCard');
     hide('fallbackCard');
   }
@@ -330,12 +408,10 @@
 
     const brand = detectBrand(ref);
     if (!brand) {
-      // Show fallback with Google search
       showFallback(ref, null, `https://www.google.com/search?q="${encodeURIComponent(ref)}"+prix+EUR+france`);
       return;
     }
 
-    // Show loading
     hide('resultCard');
     hide('fallbackCard');
     show('loadingBox');
@@ -370,11 +446,9 @@
     document.getElementById('resultRef').textContent = data.name || data.ref;
     document.getElementById('resultTnd').innerHTML = tnd.toLocaleString('fr-FR') + ' <small>TND</small>';
     document.getElementById('resultDetail').textContent =
-      `${data.eurPrice.toLocaleString('fr-FR')} EUR × ${rate} = ${(data.eurPrice * rate).toLocaleString('fr-FR', {minimumFractionDigits: 0, maximumFractionDigits: 0})} → arrondi à ${tnd.toLocaleString('fr-FR')} TND`;
+      `${data.eurPrice.toLocaleString('fr-FR')} EUR \u00d7 ${rate} = ${(data.eurPrice * rate).toLocaleString('fr-FR', {minimumFractionDigits: 0, maximumFractionDigits: 0})} \u2192 arrondi \u00e0 ${tnd.toLocaleString('fr-FR')} TND`;
 
     show('resultCard');
-
-    // Save to history
     saveToHistory(brandName, data.ref, data.eurPrice, tnd);
   }
 
@@ -382,7 +456,7 @@
   function showFallback(ref, brand, url) {
     document.getElementById('fallbackLink').href = url || '#';
     document.getElementById('fallbackLink').textContent =
-      brand ? `Search on ${BRAND_NAMES[brand]} website →` : 'Search on Google →';
+      brand ? `Rechercher sur ${BRAND_NAMES[brand]} \u2192` : 'Rechercher sur Google \u2192';
     document.getElementById('manualEur').value = '';
     hide('manualResult');
     show('fallbackCard');
@@ -396,18 +470,16 @@
     const tnd = calcTND(eur);
     document.getElementById('manualTnd').innerHTML = tnd.toLocaleString('fr-FR') + ' <small>TND</small>';
     document.getElementById('manualDetail').textContent =
-      `${eur.toLocaleString('fr-FR')} EUR × ${rate} → ${tnd.toLocaleString('fr-FR')} TND`;
+      `${eur.toLocaleString('fr-FR')} EUR \u00d7 ${rate} \u2192 ${tnd.toLocaleString('fr-FR')} TND`;
     show('manualResult');
 
-    // Save to history
     const ref = document.getElementById('refInput').value.trim();
     const brand = detectBrand(ref);
-    saveToHistory(brand ? BRAND_NAMES[brand] : '—', ref || '—', eur, tnd);
+    saveToHistory(brand ? BRAND_NAMES[brand] : '\u2014', ref || '\u2014', eur, tnd);
   }
 
   // ─── History ───
   function saveToHistory(brand, ref, eur, tnd) {
-    // Update if same ref exists at top
     if (history.length > 0 && history[0].ref === ref) {
       history[0] = { brand, ref, eur, tnd, date: new Date().toLocaleDateString('fr-FR') };
     } else {
@@ -422,7 +494,7 @@
     const list = document.getElementById('historyList');
     const clearBtn = document.getElementById('clearBtn');
     if (history.length === 0) {
-      list.innerHTML = '<li class="empty-msg">No recent lookups</li>';
+      list.innerHTML = '<li class="empty-msg">Aucune recherche r\u00e9cente</li>';
       clearBtn.style.display = 'none';
       return;
     }
@@ -466,7 +538,6 @@
   function show(id) { document.getElementById(id).classList.add('show'); }
   function hide(id) { document.getElementById(id).classList.remove('show'); }
 
-  // ─── Enter key triggers search ───
   document.getElementById('refInput').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') lookupPrice();
   });
