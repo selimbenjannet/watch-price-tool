@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Watch Price Lookup</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⌚</text></svg>">
+<style>
+  :root {
+    --bg: #0f0f1a;
+    --card: #1a1a2e;
+    --accent: #c9a84c;
+    --accent-dim: rgba(201,168,76,0.15);
+    --text: #e8e8e8;
+    --text-muted: #7a7a8f;
+    --border: #2a2a3e;
+    --input-bg: #12122a;
+    --error: #ef4444;
+    --radius: 14px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    min-height: 100dvh;
+  }
+  .container { max-width: 480px; margin: 0 auto; padding: 16px 16px 120px; }
+
+  /* Header */
+  .header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 0 24px;
+  }
+  .header h1 {
+    font-size: 18px; font-weight: 700; color: var(--accent);
+    letter-spacing: 2px; text-transform: uppercase;
+  }
+  .settings-btn {
+    background: none; border: 1px solid var(--border); color: var(--text-muted);
+    width: 38px; height: 38px; border-radius: 50%; cursor: pointer; font-size: 16px;
+    display: flex; align-items: center; justify-content: center; transition: all .2s;
+  }
+  .settings-btn:hover, .settings-btn.active { border-color: var(--accent); color: var(--accent); }
+
+  /* Settings */
+  .settings-panel {
+    display: none; background: var(--card); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 16px; margin-bottom: 16px;
+  }
+  .settings-panel.show { display: block; }
+  .settings-panel label { font-size: 12px; color: var(--text-muted); display: block; margin-bottom: 6px; text-transform: uppercase; letter-spacing: .5px; }
+  .settings-row { display: flex; align-items: center; gap: 10px; }
+  .settings-panel input {
+    width: 100px; padding: 10px; background: var(--input-bg); border: 1px solid var(--border);
+    border-radius: 8px; color: var(--text); font-size: 16px;
+  }
+  .settings-panel input:focus { outline: none; border-color: var(--accent); }
+  .save-btn {
+    padding: 10px 18px; background: var(--accent); color: #0f0f1a; border: none;
+    border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 13px;
+  }
+
+  /* Main search card */
+  .search-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 20px; margin-bottom: 16px;
+  }
+  .search-card label {
+    font-size: 12px; color: var(--text-muted); display: block; margin-bottom: 8px;
+    text-transform: uppercase; letter-spacing: .5px;
+  }
+  .search-row { display: flex; gap: 10px; }
+  .search-input {
+    flex: 1; padding: 16px; background: var(--input-bg); border: 1px solid var(--border);
+    border-radius: 10px; color: var(--text); font-size: 18px; font-weight: 500;
+    transition: border-color .2s;
+  }
+  .search-input:focus { outline: none; border-color: var(--accent); }
+  .search-input::placeholder { color: #3a3a50; }
+  .search-btn {
+    padding: 16px 24px; background: var(--accent); color: #0f0f1a; border: none;
+    border-radius: 10px; font-weight: 700; cursor: pointer; font-size: 16px;
+    transition: opacity .2s; white-space: nowrap;
+  }
+  .search-btn:disabled { opacity: .4; cursor: not-allowed; }
+  .search-btn:not(:disabled):hover { opacity: .9; }
+
+  .brand-hint {
+    margin-top: 10px; font-size: 12px; color: var(--text-muted);
+    display: flex; align-items: center; gap: 6px;
+  }
+  .brand-badge {
+    display: inline-block; padding: 2px 8px; background: var(--accent-dim);
+    color: var(--accent); border-radius: 4px; font-weight: 600; font-size: 11px;
+    text-transform: uppercase; letter-spacing: .5px;
+  }
+
+  /* Loading */
+  .loading {
+    display: none; text-align: center; padding: 40px 20px;
+  }
+  .loading.show { display: block; }
+  .spinner {
+    width: 36px; height: 36px; border: 3px solid var(--border);
+    border-top-color: var(--accent); border-radius: 50%;
+    animation: spin .8s linear infinite; margin: 0 auto 14px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading-text { color: var(--text-muted); font-size: 14px; }
+
+  /* Result card */
+  .result-card {
+    display: none; background: var(--card); border: 2px solid var(--accent);
+    border-radius: var(--radius); padding: 28px 20px; text-align: center;
+    margin-bottom: 16px; animation: fadeUp .3s ease;
+  }
+  .result-card.show { display: block; }
+  .result-watch-name {
+    font-size: 13px; color: var(--text-muted); margin-bottom: 4px;
+    text-transform: uppercase; letter-spacing: .5px;
+  }
+  .result-ref {
+    font-size: 15px; color: var(--text); margin-bottom: 16px; font-weight: 500;
+  }
+  .result-tnd {
+    font-size: 48px; font-weight: 800; color: var(--accent);
+    letter-spacing: 1px; line-height: 1;
+  }
+  .result-tnd small { font-size: 22px; font-weight: 600; }
+  .result-detail {
+    font-size: 12px; color: var(--text-muted); margin-top: 10px; line-height: 1.5;
+  }
+
+  /* Fallback card */
+  .fallback-card {
+    display: none; background: var(--card); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 20px; margin-bottom: 16px;
+    animation: fadeUp .3s ease;
+  }
+  .fallback-card.show { display: block; }
+  .fallback-title { font-size: 14px; color: var(--text); margin-bottom: 12px; font-weight: 600; }
+  .fallback-desc { font-size: 13px; color: var(--text-muted); margin-bottom: 14px; line-height: 1.5; }
+  .fallback-link {
+    display: block; width: 100%; padding: 14px; background: transparent;
+    border: 2px solid var(--accent); border-radius: 10px; color: var(--accent);
+    font-size: 14px; font-weight: 600; text-align: center; text-decoration: none;
+    margin-bottom: 16px; transition: background .2s;
+  }
+  .fallback-link:hover { background: var(--accent-dim); }
+  .fallback-divider {
+    text-align: center; color: var(--text-muted); font-size: 11px; margin: 14px 0;
+    text-transform: uppercase; letter-spacing: 1px;
+  }
+  .manual-input-group { margin-bottom: 12px; }
+  .manual-input-group label { font-size: 12px; color: var(--text-muted); display: block; margin-bottom: 6px; }
+  .manual-input {
+    width: 100%; padding: 14px; background: var(--input-bg); border: 1px solid var(--border);
+    border-radius: 10px; color: var(--text); font-size: 18px; text-align: center;
+  }
+  .manual-input:focus { outline: none; border-color: var(--accent); }
+
+  /* Manual result */
+  .manual-result {
+    display: none; text-align: center; padding: 16px 0;
+  }
+  .manual-result.show { display: block; }
+  .manual-tnd { font-size: 36px; font-weight: 800; color: var(--accent); }
+  .manual-tnd small { font-size: 18px; }
+  .manual-detail { font-size: 12px; color: var(--text-muted); margin-top: 6px; }
+
+  /* History */
+  .history-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 16px;
+  }
+  .history-title {
+    font-size: 12px; color: var(--text-muted); text-transform: uppercase;
+    letter-spacing: 1px; margin-bottom: 12px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .clear-btn { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 11px; text-decoration: underline; }
+  .history-list { list-style: none; }
+  .history-item {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 0; border-bottom: 1px solid var(--border); cursor: pointer;
+    transition: opacity .2s;
+  }
+  .history-item:hover { opacity: .7; }
+  .history-item:last-child { border-bottom: none; }
+  .history-brand { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .5px; }
+  .history-ref { font-size: 13px; color: var(--text); font-weight: 500; }
+  .history-price { font-size: 15px; color: var(--accent); font-weight: 700; }
+  .empty-msg { color: var(--text-muted); font-size: 13px; text-align: center; padding: 10px; }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- Header -->
+  <div class="header">
+    <h1>⌚ Price Lookup</h1>
+    <button class="settings-btn" onclick="toggleSettings()" title="Settings">⚙</button>
+  </div>
+
+  <!-- Settings -->
+  <div class="settings-panel" id="settingsPanel">
+    <label>Conversion rate (EUR → TND)</label>
+    <div class="settings-row">
+      <input type="number" id="rateInput" step="0.01" min="0.01">
+      <button class="save-btn" onclick="saveRate()">Save</button>
+    </div>
+  </div>
+
+  <!-- Search -->
+  <div class="search-card">
+    <label>Watch Reference</label>
+    <div class="search-row">
+      <input class="search-input" id="refInput" type="text" placeholder="e.g. 278602-3003" autocomplete="off" autocapitalize="characters" oninput="onRefInput()">
+      <button class="search-btn" id="searchBtn" onclick="lookupPrice()" disabled>GO</button>
+    </div>
+    <div class="brand-hint" id="brandHint" style="display:none">
+      Detected: <span class="brand-badge" id="brandBadge"></span>
+    </div>
+  </div>
+
+  <!-- Loading -->
+  <div class="loading" id="loadingBox">
+    <div class="spinner"></div>
+    <div class="loading-text">Searching <span id="loadingBrand"></span> website...</div>
+  </div>
+
+  <!-- Auto result -->
+  <div class="result-card" id="resultCard">
+    <div class="result-watch-name" id="resultName"></div>
+    <div class="result-ref" id="resultRef"></div>
+    <div class="result-tnd" id="resultTnd"></div>
+    <div class="result-detail" id="resultDetail"></div>
+  </div>
+
+  <!-- Fallback -->
+  <div class="fallback-card" id="fallbackCard">
+    <div class="fallback-title">Price not found automatically</div>
+    <div class="fallback-desc">Open the brand website to check the EUR price, then enter it below:</div>
+    <a class="fallback-link" id="fallbackLink" href="#" target="_blank" rel="noopener">Open on brand website →</a>
+    <div class="fallback-divider">then enter the EUR price</div>
+    <div class="manual-input-group">
+      <input class="manual-input" id="manualEur" type="number" placeholder="EUR price" oninput="manualCalc()">
+    </div>
+    <div class="manual-result" id="manualResult">
+      <div class="manual-tnd" id="manualTnd"></div>
+      <div class="manual-detail" id="manualDetail"></div>
+    </div>
+  </div>
+
+  <!-- History -->
+  <div class="history-card">
+    <div class="history-title">
+      <span>Recent Lookups</span>
+      <button class="clear-btn" id="clearBtn" onclick="clearHistory()" style="display:none">Clear</button>
+    </div>
+    <ul class="history-list" id="historyList">
+      <li class="empty-msg">No recent lookups</li>
+    </ul>
+  </div>
+
+</div>
+
+<script>
+  // ─── State ───
+  let rate = parseFloat(localStorage.getItem('watchRate')) || 3.55;
+  let history = JSON.parse(localStorage.getItem('watchHistory') || '[]');
+  document.getElementById('rateInput').value = rate;
+  renderHistory();
+
+  const BRAND_NAMES = {
+    longines: 'Longines', chopard: 'Chopard', hublot: 'Hublot', tudor: 'Tudor'
+  };
+
+  // ─── Auto-detect brand from reference ───
+  function detectBrand(ref) {
+    ref = ref.trim().toUpperCase();
+    if (/^L\d/.test(ref)) return 'longines';
+    if (/^M\d{3,}/.test(ref)) return 'tudor';
+    if (/^\d{5}[A-Z]/.test(ref)) return 'tudor';
+    if (/^\d{3}\.\w{2}\.\d{3,4}\.\w{2}/.test(ref)) return 'hublot';
+    if (/^\d{5,}/.test(ref)) return 'chopard';
+    return null;
+  }
+
+  // ─── TND calculation ───
+  function calcTND(eur) {
+    const raw = eur * rate;
+    return Math.ceil(raw / 50) * 50;
+  }
+
+  // ─── Input handler ───
+  function onRefInput() {
+    const ref = document.getElementById('refInput').value.trim();
+    const brand = detectBrand(ref);
+    const hint = document.getElementById('brandHint');
+    const badge = document.getElementById('brandBadge');
+    const btn = document.getElementById('searchBtn');
+
+    if (brand && ref.length >= 3) {
+      hint.style.display = 'flex';
+      badge.textContent = BRAND_NAMES[brand];
+      btn.disabled = false;
+    } else {
+      hint.style.display = ref.length >= 3 ? 'flex' : 'none';
+      badge.textContent = ref.length >= 3 ? 'Unknown brand' : '';
+      btn.disabled = ref.length < 3;
+    }
+
+    // Hide previous results
+    hide('resultCard');
+    hide('fallbackCard');
+  }
+
+  // ─── Main lookup ───
+  async function lookupPrice() {
+    const ref = document.getElementById('refInput').value.trim();
+    if (!ref) return;
+
+    const brand = detectBrand(ref);
+    if (!brand) {
+      // Show fallback with Google search
+      showFallback(ref, null, `https://www.google.com/search?q="${encodeURIComponent(ref)}"+prix+EUR+france`);
+      return;
+    }
+
+    // Show loading
+    hide('resultCard');
+    hide('fallbackCard');
+    show('loadingBox');
+    document.getElementById('loadingBrand').textContent = BRAND_NAMES[brand];
+    document.getElementById('searchBtn').disabled = true;
+
+    try {
+      const res = await fetch(`/api/price?ref=${encodeURIComponent(ref)}&brand=${brand}`);
+      const data = await res.json();
+
+      hide('loadingBox');
+      document.getElementById('searchBtn').disabled = false;
+
+      if (data.success && data.eurPrice) {
+        showResult(data);
+      } else {
+        showFallback(ref, brand, data.fallbackUrl);
+      }
+    } catch (err) {
+      hide('loadingBox');
+      document.getElementById('searchBtn').disabled = false;
+      showFallback(ref, brand, `https://www.google.com/search?q="${encodeURIComponent(ref)}"+prix+EUR+france`);
+    }
+  }
+
+  // ─── Show auto result ───
+  function showResult(data) {
+    const tnd = calcTND(data.eurPrice);
+    const brandName = BRAND_NAMES[data.brand] || data.brand;
+
+    document.getElementById('resultName').textContent = brandName;
+    document.getElementById('resultRef').textContent = data.name || data.ref;
+    document.getElementById('resultTnd').innerHTML = tnd.toLocaleString('fr-FR') + ' <small>TND</small>';
+    document.getElementById('resultDetail').textContent =
+      `${data.eurPrice.toLocaleString('fr-FR')} EUR × ${rate} = ${(data.eurPrice * rate).toLocaleString('fr-FR', {minimumFractionDigits: 0, maximumFractionDigits: 0})} → arrondi à ${tnd.toLocaleString('fr-FR')} TND`;
+
+    show('resultCard');
+
+    // Save to history
+    saveToHistory(brandName, data.ref, data.eurPrice, tnd);
+  }
+
+  // ─── Show fallback ───
+  function showFallback(ref, brand, url) {
+    document.getElementById('fallbackLink').href = url || '#';
+    document.getElementById('fallbackLink').textContent =
+      brand ? `Search on ${BRAND_NAMES[brand]} website →` : 'Search on Google →';
+    document.getElementById('manualEur').value = '';
+    hide('manualResult');
+    show('fallbackCard');
+  }
+
+  // ─── Manual EUR → TND ───
+  function manualCalc() {
+    const eur = parseFloat(document.getElementById('manualEur').value);
+    if (!eur || eur <= 0) { hide('manualResult'); return; }
+
+    const tnd = calcTND(eur);
+    document.getElementById('manualTnd').innerHTML = tnd.toLocaleString('fr-FR') + ' <small>TND</small>';
+    document.getElementById('manualDetail').textContent =
+      `${eur.toLocaleString('fr-FR')} EUR × ${rate} → ${tnd.toLocaleString('fr-FR')} TND`;
+    show('manualResult');
+
+    // Save to history
+    const ref = document.getElementById('refInput').value.trim();
+    const brand = detectBrand(ref);
+    saveToHistory(brand ? BRAND_NAMES[brand] : '—', ref || '—', eur, tnd);
+  }
+
+  // ─── History ───
+  function saveToHistory(brand, ref, eur, tnd) {
+    // Update if same ref exists at top
+    if (history.length > 0 && history[0].ref === ref) {
+      history[0] = { brand, ref, eur, tnd, date: new Date().toLocaleDateString('fr-FR') };
+    } else {
+      history.unshift({ brand, ref, eur, tnd, date: new Date().toLocaleDateString('fr-FR') });
+    }
+    if (history.length > 30) history = history.slice(0, 30);
+    localStorage.setItem('watchHistory', JSON.stringify(history));
+    renderHistory();
+  }
+
+  function renderHistory() {
+    const list = document.getElementById('historyList');
+    const clearBtn = document.getElementById('clearBtn');
+    if (history.length === 0) {
+      list.innerHTML = '<li class="empty-msg">No recent lookups</li>';
+      clearBtn.style.display = 'none';
+      return;
+    }
+    clearBtn.style.display = 'block';
+    list.innerHTML = history.map(h => `
+      <li class="history-item" onclick="reuse('${h.ref}')">
+        <div>
+          <div class="history-brand">${h.brand}</div>
+          <div class="history-ref">${h.ref}</div>
+        </div>
+        <div class="history-price">${h.tnd.toLocaleString('fr-FR')} TND</div>
+      </li>`).join('');
+  }
+
+  function reuse(ref) {
+    document.getElementById('refInput').value = ref;
+    onRefInput();
+    lookupPrice();
+  }
+
+  function clearHistory() {
+    history = [];
+    localStorage.removeItem('watchHistory');
+    renderHistory();
+  }
+
+  // ─── Settings ───
+  function toggleSettings() {
+    document.getElementById('settingsPanel').classList.toggle('show');
+    document.querySelector('.settings-btn').classList.toggle('active');
+  }
+  function saveRate() {
+    const val = parseFloat(document.getElementById('rateInput').value);
+    if (!val || val <= 0) return;
+    rate = val;
+    localStorage.setItem('watchRate', rate);
+    toggleSettings();
+  }
+
+  // ─── Helpers ───
+  function show(id) { document.getElementById(id).classList.add('show'); }
+  function hide(id) { document.getElementById(id).classList.remove('show'); }
+
+  // ─── Enter key triggers search ───
+  document.getElementById('refInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') lookupPrice();
+  });
+</script>
+</body>
+</html>
