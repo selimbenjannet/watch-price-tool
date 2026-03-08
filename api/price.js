@@ -109,38 +109,74 @@ async function getLonginesPrice(ref) {
     tryFetchPrice(`https://api.ecom.longines.com/fr/search?q=${encodeURIComponent(ref)}`, 'longines')
   );
 
-  // Race: return first successful result, or null after 7s
-  const result = await raceWithTimeout(attempts, 7000);
+  // Race: return first successful result, or null after 5s
+  const result = await raceWithTimeout(attempts, 5000);
   if (result) {
     return { ...result, name: result.name || ref };
   }
   return null;
 }
 
-// ─── Tudor: try product page ───
-const TUDOR_COLLECTIONS = [
-  'black-bay', 'pelagos', 'royal', '1926', 'glamour',
-  'ranger', 'black-bay-chrono', 'black-bay-gmt',
-  'black-bay-58', 'black-bay-pro', 'black-bay-54',
-  'clair-de-rose', 'style',
+// ─── Tudor: correct URL pattern is /en/watch-family/{category}/{ref} ───
+const TUDOR_FAMILIES = [
+  'daring-watches', 'black-bay', 'black-bay-chrono',
+  'pelagos', 'pelagos-fxd', 'tudor-royal',
+  '1926', 'ranger', 'glamour-date',
 ];
 
+// Tudor-specific headers: set France as country to get EUR prices
+const TUDOR_HEADERS = {
+  ...HEADERS,
+  'Cookie': 'country=FR; selectedCountry=FR; userCountry=FR; region=FR; locale=fr_FR',
+};
+
 async function getTudorPrice(ref) {
-  // Tudor refs like "M79230N-0001" → "m79230n-0001"
   const refFormatted = ref.toLowerCase();
 
-  // Fire ALL collection URLs in parallel — first success wins
-  const attempts = TUDOR_COLLECTIONS.map(collection => {
-    const url = `https://www.tudorwatch.com/fr/watches/${collection}/${refFormatted}`;
-    return tryFetchPrice(url, 'tudor');
+  // Fire ALL family URLs in parallel — first success wins
+  const attempts = TUDOR_FAMILIES.map(family => {
+    const url = `https://www.tudorwatch.com/en/watch-family/${family}/${refFormatted}`;
+    return tryFetchPriceTudor(url);
   });
 
-  // Race: return first successful result, or null after 7s
-  const result = await raceWithTimeout(attempts, 7000);
+  // Also try the old URL pattern just in case
+  const oldFamilies = ['black-bay', 'pelagos', 'royal', '1926', 'ranger'];
+  oldFamilies.forEach(collection => {
+    attempts.push(
+      tryFetchPriceTudor(`https://www.tudorwatch.com/en/watches/${collection}/${refFormatted}`)
+    );
+  });
+
+  const result = await raceWithTimeout(attempts, 5000);
   if (result) {
     return { ...result, name: result.name || ref };
   }
   return null;
+}
+
+// Tudor-specific fetch with country cookie
+async function tryFetchPriceTudor(url) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 4000);
+  try {
+    const res = await fetch(url, {
+      headers: TUDOR_HEADERS,
+      redirect: 'follow',
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const html = await res.text();
+    const price = extractPriceFromHTML(html, 'tudor');
+    if (price) {
+      const name = extractNameFromHTML(html) || null;
+      return { price, currency: 'EUR', name };
+    }
+    throw new Error('No price found');
+  } catch (e) {
+    clearTimeout(timeout);
+    throw e;
+  }
 }
 
 // ─── Hublot: search-based approach ───
@@ -153,7 +189,7 @@ async function getHublotPrice(ref) {
     tryFetchPrice(`https://www.hublot.com/fr-fr/watches/${refSlug}`, 'hublot'),
   ];
 
-  const result = await raceWithTimeout(attempts, 7000);
+  const result = await raceWithTimeout(attempts, 5000);
   if (result) {
     return { ...result, name: result.name || ref };
   }
@@ -248,15 +284,20 @@ function detectBrand(ref) {
 // ─── Fallback URLs for manual lookup ───
 function getFallbackUrl(brand, ref) {
   const encoded = encodeURIComponent(ref);
+  // For Tudor: ref like M7941A1A0NU-0002 → build direct product page link
+  const tudorRef = ref.toLowerCase();
   switch (brand) {
     case 'chopard':
       return `https://www.chopard.com/fr-fr/search?q=${encoded}`;
     case 'longines':
-      return `https://www.google.com/search?q=site:longines.com/fr+"${encoded}"+prix`;
+      // Direct Google search scoped to Longines France
+      return `https://www.google.com/search?q=site:longines.com/fr+"${encoded}"`;
     case 'tudor':
-      return `https://www.google.com/search?q=site:tudorwatch.com+"${encoded}"+prix+EUR`;
+      // Direct link to Tudor website — user can set country to France for EUR prices
+      return `https://www.google.com/search?q=site:tudorwatch.com+"${encoded}"`;
     case 'hublot':
-      return `https://www.google.com/search?q=site:hublot.com/fr-fr+"${encoded}"+prix`;
+      // Hublot France search
+      return `https://www.google.com/search?q=Hublot+"${encoded}"+prix+EUR+france`;
     default:
       return `https://www.google.com/search?q="${encoded}"+prix+EUR+france`;
   }
