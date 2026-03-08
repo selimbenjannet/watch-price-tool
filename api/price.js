@@ -1,7 +1,13 @@
 const fetch = require('node-fetch');
 const cheerio = require('cheerio');
 
-// ─── Browser-like headers to avoid 403 blocks ───
+// ═══════════════════════════════════════════════════════════
+// Configuration
+// ═══════════════════════════════════════════════════════════
+const BROWSERLESS_TOKEN = process.env.BROWSERLESS_TOKEN;
+const BROWSERLESS_URL = process.env.BROWSERLESS_URL || 'https://production-sfo.browserless.io';
+
+// Browser-like headers to avoid 403 blocks
 const HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
   'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
@@ -11,47 +17,58 @@ const HEADERS = {
   'Cache-Control': 'no-cache',
 };
 
-// ─── Chopard: SFCC API (confirmed working) ───
+// Tudor-specific headers with France country cookie
+const TUDOR_HEADERS = {
+  ...HEADERS,
+  'Cookie': 'country=FR; selectedCountry=FR; userCountry=FR; region=FR; locale=fr_FR',
+};
+
+
+// ═══════════════════════════════════════════════════════════
+// PHASE 1: Direct HTTP fetch (fast, free, sometimes blocked)
+// ═══════════════════════════════════════════════════════════
+
+// ─── Chopard: SFCC API (confirmed working — no fallback needed) ───
 async function getChopardPrice(ref) {
   const url = `https://www.chopard.com/on/demandware.store/Sites-chopard-Site/fr_FR/Product-Variation?pid=${encodeURIComponent(ref)}&format=ajax`;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 7000);
-  const res = await fetch(url, {
-    headers: {
-      ...HEADERS,
-      'Accept': 'application/json, text/javascript, */*; q=0.01',
-      'X-Requested-With': 'XMLHttpRequest',
-    },
-    signal: controller.signal,
-  });
-  clearTimeout(timeout);
+  try {
+    const res = await fetch(url, {
+      headers: {
+        ...HEADERS,
+        'Accept': 'application/json, text/javascript, */*; q=0.01',
+        'X-Requested-With': 'XMLHttpRequest',
+      },
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    if (!res.ok) return null;
 
-  if (!res.ok) return null;
+    const data = await res.json();
 
-  const data = await res.json();
-
-  // Extract price from the JSON response
-  if (data?.product?.price?.sales?.value) {
-    return {
-      price: data.product.price.sales.value,
-      currency: 'EUR',
-      name: data.product.productName || ref,
-    };
+    if (data?.product?.price?.sales?.value) {
+      return {
+        price: data.product.price.sales.value,
+        currency: 'EUR',
+        name: data.product.productName || ref,
+      };
+    }
+    if (data?.product?.gtmData?.price) {
+      return {
+        price: parseFloat(data.product.gtmData.price),
+        currency: 'EUR',
+        name: data.product.gtmData.name || ref,
+      };
+    }
+    return null;
+  } catch (e) {
+    clearTimeout(timeout);
+    return null;
   }
-
-  // Try gtmData fallback
-  if (data?.product?.gtmData?.price) {
-    return {
-      price: parseFloat(data.product.gtmData.price),
-      currency: 'EUR',
-      name: data.product.gtmData.name || ref,
-    };
-  }
-
-  return null;
 }
 
-// ─── Helper: race all fetches with a global timeout ───
+// ─── Race helper: first success or null after timeout ───
 async function raceWithTimeout(promises, timeoutMs) {
   return Promise.race([
     Promise.any(promises).catch(() => null),
@@ -59,10 +76,10 @@ async function raceWithTimeout(promises, timeoutMs) {
   ]);
 }
 
-// ─── Helper: try to fetch a URL and extract price ───
-async function tryFetchPrice(url, brand) {
+// ─── Generic fetch + extract price ───
+async function tryFetchPrice(url, brand, timeoutMs = 2500) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 4000);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await fetch(url, {
       headers: HEADERS,
@@ -84,80 +101,10 @@ async function tryFetchPrice(url, brand) {
   }
 }
 
-// ─── Longines: try ALL collection URLs in parallel ───
-const LONGINES_COLLECTIONS = [
-  'hydroconquest', 'master-collection', 'spirit', 'conquest',
-  'elegant-collection', 'dolcevita', 'heritage-classic',
-  'la-grande-classique-de-longines', 'record', 'flagship',
-  'primaluna', 'symphonette', 'mini-dolcevita',
-  'longines-spirit', 'heritage-military', 'legend-diver',
-  'ultra-chron', 'pilot', 'skin-diver',
-];
-
-async function getLonginesPrice(ref) {
-  // Convert ref like "L3.742.4.96.6" to URL format "l3-742-4-96-6"
-  const refFormatted = ref.toLowerCase().replace(/\./g, '-');
-
-  // Fire ALL collection URLs in parallel — first success wins
-  const attempts = LONGINES_COLLECTIONS.map(collection => {
-    const url = `https://www.longines.com/fr/p/watch-${collection}-${refFormatted}`;
-    return tryFetchPrice(url, 'longines');
-  });
-
-  // Also try the ecommerce API search in parallel
-  attempts.push(
-    tryFetchPrice(`https://api.ecom.longines.com/fr/search?q=${encodeURIComponent(ref)}`, 'longines')
-  );
-
-  // Race: return first successful result, or null after 5s
-  const result = await raceWithTimeout(attempts, 5000);
-  if (result) {
-    return { ...result, name: result.name || ref };
-  }
-  return null;
-}
-
-// ─── Tudor: correct URL pattern is /en/watch-family/{category}/{ref} ───
-const TUDOR_FAMILIES = [
-  'daring-watches', 'black-bay', 'black-bay-chrono',
-  'pelagos', 'pelagos-fxd', 'tudor-royal',
-  '1926', 'ranger', 'glamour-date',
-];
-
-// Tudor-specific headers: set France as country to get EUR prices
-const TUDOR_HEADERS = {
-  ...HEADERS,
-  'Cookie': 'country=FR; selectedCountry=FR; userCountry=FR; region=FR; locale=fr_FR',
-};
-
-async function getTudorPrice(ref) {
-  const refFormatted = ref.toLowerCase();
-
-  // Fire ALL family URLs in parallel — first success wins
-  const attempts = TUDOR_FAMILIES.map(family => {
-    const url = `https://www.tudorwatch.com/en/watch-family/${family}/${refFormatted}`;
-    return tryFetchPriceTudor(url);
-  });
-
-  // Also try the old URL pattern just in case
-  const oldFamilies = ['black-bay', 'pelagos', 'royal', '1926', 'ranger'];
-  oldFamilies.forEach(collection => {
-    attempts.push(
-      tryFetchPriceTudor(`https://www.tudorwatch.com/en/watches/${collection}/${refFormatted}`)
-    );
-  });
-
-  const result = await raceWithTimeout(attempts, 5000);
-  if (result) {
-    return { ...result, name: result.name || ref };
-  }
-  return null;
-}
-
-// Tudor-specific fetch with country cookie
-async function tryFetchPriceTudor(url) {
+// ─── Tudor-specific fetch with country cookie ───
+async function tryFetchPriceTudor(url, timeoutMs = 2500) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 4000);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await fetch(url, {
       headers: TUDOR_HEADERS,
@@ -179,42 +126,275 @@ async function tryFetchPriceTudor(url) {
   }
 }
 
-// ─── Hublot: search-based approach ───
+// ─── Longines: parallel collection URLs (Phase 1) ───
+const LONGINES_COLLECTIONS = [
+  'hydroconquest', 'master-collection', 'spirit', 'conquest',
+  'elegant-collection', 'dolcevita', 'heritage-classic',
+  'la-grande-classique-de-longines', 'record', 'flagship',
+  'primaluna', 'symphonette', 'mini-dolcevita',
+  'longines-spirit', 'heritage-military', 'legend-diver',
+  'ultra-chron', 'pilot', 'skin-diver',
+];
+
+async function getLonginesPrice(ref) {
+  const refFormatted = ref.toLowerCase().replace(/\./g, '-');
+  const attempts = LONGINES_COLLECTIONS.map(collection => {
+    const url = `https://www.longines.com/fr/p/watch-${collection}-${refFormatted}`;
+    return tryFetchPrice(url, 'longines');
+  });
+  attempts.push(
+    tryFetchPrice(`https://api.ecom.longines.com/fr/search?q=${encodeURIComponent(ref)}`, 'longines')
+  );
+  // 3s timeout for Phase 1 (leaves room for Phase 2)
+  const result = await raceWithTimeout(attempts, 3000);
+  if (result) return { ...result, name: result.name || ref };
+  return null;
+}
+
+// ─── Tudor: parallel family URLs (Phase 1) ───
+const TUDOR_FAMILIES = [
+  'daring-watches', 'black-bay', 'black-bay-chrono',
+  'pelagos', 'pelagos-fxd', 'tudor-royal',
+  '1926', 'ranger', 'glamour-date',
+];
+
+async function getTudorPrice(ref) {
+  const refFormatted = ref.toLowerCase();
+  const attempts = TUDOR_FAMILIES.map(family => {
+    const url = `https://www.tudorwatch.com/en/watch-family/${family}/${refFormatted}`;
+    return tryFetchPriceTudor(url);
+  });
+  const oldFamilies = ['black-bay', 'pelagos', 'royal', '1926', 'ranger'];
+  oldFamilies.forEach(collection => {
+    attempts.push(
+      tryFetchPriceTudor(`https://www.tudorwatch.com/en/watches/${collection}/${refFormatted}`)
+    );
+  });
+  // 3s timeout for Phase 1
+  const result = await raceWithTimeout(attempts, 3000);
+  if (result) return { ...result, name: result.name || ref };
+  return null;
+}
+
+// ─── Hublot: search-based approach (Phase 1) ───
 async function getHublotPrice(ref) {
   const refSlug = ref.toLowerCase().replace(/\./g, '-');
-
-  // Try both search and direct URL in parallel
   const attempts = [
     tryFetchPrice(`https://www.hublot.com/fr-fr/find-your-hublot?query=${encodeURIComponent(ref)}`, 'hublot'),
     tryFetchPrice(`https://www.hublot.com/fr-fr/watches/${refSlug}`, 'hublot'),
   ];
-
-  const result = await raceWithTimeout(attempts, 5000);
-  if (result) {
-    return { ...result, name: result.name || ref };
-  }
+  // 3s timeout for Phase 1
+  const result = await raceWithTimeout(attempts, 3000);
+  if (result) return { ...result, name: result.name || ref };
   return null;
 }
 
-// ─── Generic price extraction from HTML ───
+
+// ═══════════════════════════════════════════════════════════
+// PHASE 2: Browserless.io headless browser (reliable fallback)
+// ═══════════════════════════════════════════════════════════
+
+/**
+ * Fetch fully-rendered HTML via Browserless.io headless Chrome.
+ * The /content endpoint loads the page, executes JavaScript, and returns HTML.
+ */
+async function fetchRenderedHTML(url, options = {}) {
+  if (!BROWSERLESS_TOKEN) return null;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 6500);
+
+  try {
+    const body = {
+      url,
+      gotoOptions: {
+        waitUntil: 'networkidle0',
+        timeout: 5500,
+      },
+    };
+
+    // Set cookies (e.g., country=FR for Tudor)
+    if (options.cookies && options.cookies.length > 0) {
+      body.cookies = options.cookies;
+    }
+
+    // Optional: wait for a specific element to appear
+    if (options.waitForSelector) {
+      body.waitForSelector = {
+        selector: options.waitForSelector,
+        timeout: 4000,
+      };
+    }
+
+    const res = await fetch(`${BROWSERLESS_URL}/content?token=${BROWSERLESS_TOKEN}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeout);
+
+    if (!res.ok) {
+      console.log(`[browserless] HTTP ${res.status} for ${url}`);
+      return null;
+    }
+
+    return await res.text();
+  } catch (e) {
+    clearTimeout(timeout);
+    console.log(`[browserless] Error: ${e.message}`);
+    return null;
+  }
+}
+
+/**
+ * Phase 2 dispatcher: try Browserless.io for each brand
+ */
+async function getBrowserlessPrice(brand, ref) {
+  if (!BROWSERLESS_TOKEN) return null;
+
+  console.log(`[browserless] Phase 2 — trying ${brand} ref: ${ref}`);
+
+  switch (brand) {
+    case 'longines': return getBrowserlessLonginesPrice(ref);
+    case 'tudor':    return getBrowserlessTudorPrice(ref);
+    case 'hublot':   return getBrowserlessHublotPrice(ref);
+    default:         return null;
+  }
+}
+
+// ─── Longines via Browserless ───
+async function getBrowserlessLonginesPrice(ref) {
+  const refFormatted = ref.toLowerCase().replace(/\./g, '-');
+
+  // Strategy A: Try the search page (rendered with JS)
+  const searchHtml = await fetchRenderedHTML(
+    `https://www.longines.com/fr/search?q=${encodeURIComponent(ref)}`
+  );
+  if (searchHtml) {
+    const price = extractPriceFromHTML(searchHtml, 'longines');
+    if (price) {
+      return { price, currency: 'EUR', name: extractNameFromHTML(searchHtml) || ref };
+    }
+  }
+
+  // Strategy B: Try most common collections with Browserless
+  const commonCollections = ['hydroconquest', 'master-collection', 'spirit', 'conquest', 'legend-diver'];
+  const attempts = commonCollections.map(collection => {
+    const url = `https://www.longines.com/fr/p/watch-${collection}-${refFormatted}`;
+    return fetchRenderedHTML(url).then(html => {
+      if (!html) throw new Error('No HTML');
+      const price = extractPriceFromHTML(html, 'longines');
+      if (!price) throw new Error('No price');
+      return { price, currency: 'EUR', name: extractNameFromHTML(html) || ref };
+    });
+  });
+
+  return Promise.any(attempts).catch(() => null);
+}
+
+// ─── Tudor via Browserless ───
+async function getBrowserlessTudorPrice(ref) {
+  const refLower = ref.toLowerCase();
+
+  // France cookies so Tudor shows EUR prices
+  const cookies = [
+    { name: 'country', value: 'FR', domain: '.tudorwatch.com', path: '/' },
+    { name: 'selectedCountry', value: 'FR', domain: '.tudorwatch.com', path: '/' },
+    { name: 'userCountry', value: 'FR', domain: '.tudorwatch.com', path: '/' },
+    { name: 'region', value: 'FR', domain: '.tudorwatch.com', path: '/' },
+    { name: 'locale', value: 'fr_FR', domain: '.tudorwatch.com', path: '/' },
+  ];
+
+  // Guess the most likely families from reference prefix
+  const families = guessTudorFamilies(ref);
+
+  // Try guessed families in parallel — first success wins
+  const attempts = families.map(family => {
+    const url = `https://www.tudorwatch.com/en/watch-family/${family}/${refLower}`;
+    return fetchRenderedHTML(url, { cookies }).then(html => {
+      if (!html) throw new Error('No HTML');
+      const price = extractPriceFromHTML(html, 'tudor');
+      if (!price) throw new Error('No price');
+      return { price, currency: 'EUR', name: extractNameFromHTML(html) || ref };
+    });
+  });
+
+  return Promise.any(attempts).catch(() => null);
+}
+
+/**
+ * Guess Tudor family from reference number prefix.
+ * Returns 2-3 most likely families to minimize Browserless API calls.
+ */
+function guessTudorFamilies(ref) {
+  const clean = ref.toUpperCase().replace(/^M/, '');
+
+  if (/^79[0-3]/.test(clean)) return ['black-bay', 'black-bay-chrono', 'ranger'];
+  if (/^79[4-9]/.test(clean)) return ['black-bay', 'daring-watches'];
+  if (/^25/.test(clean))       return ['pelagos', 'pelagos-fxd'];
+  if (/^28/.test(clean))       return ['tudor-royal'];
+  if (/^91/.test(clean))       return ['1926'];
+
+  // Unknown prefix: try most popular families
+  return ['black-bay', 'pelagos', 'tudor-royal'];
+}
+
+// ─── Hublot via Browserless ───
+async function getBrowserlessHublotPrice(ref) {
+  // Try Hublot search page (rendered with JS)
+  const html = await fetchRenderedHTML(
+    `https://www.hublot.com/fr-fr/find-your-hublot?query=${encodeURIComponent(ref)}`
+  );
+  if (html) {
+    const price = extractPriceFromHTML(html, 'hublot');
+    if (price) {
+      return { price, currency: 'EUR', name: extractNameFromHTML(html) || ref };
+    }
+  }
+
+  // Try direct product URL
+  const refSlug = ref.toLowerCase().replace(/\./g, '-');
+  const directHtml = await fetchRenderedHTML(
+    `https://www.hublot.com/fr-fr/watches/${refSlug}`
+  );
+  if (directHtml) {
+    const price = extractPriceFromHTML(directHtml, 'hublot');
+    if (price) {
+      return { price, currency: 'EUR', name: extractNameFromHTML(directHtml) || ref };
+    }
+  }
+
+  return null;
+}
+
+
+// ═══════════════════════════════════════════════════════════
+// Price & name extraction from HTML
+// ═══════════════════════════════════════════════════════════
+
 function extractPriceFromHTML(html, brand) {
   const $ = cheerio.load(html);
 
-  // Strategy 1: JSON-LD structured data
+  // Strategy 1: JSON-LD structured data (fixed: .each() can't return)
+  let jsonLdPrice = null;
   $('script[type="application/ld+json"]').each((_, el) => {
+    if (jsonLdPrice) return false; // stop iterating
     try {
       const data = JSON.parse($(el).html());
-      const offers = data.offers || data.Offers || (data['@graph'] && data['@graph'].find(n => n.offers))?.offers;
+      const offers = data.offers || data.Offers ||
+        (data['@graph'] && data['@graph'].find(n => n.offers))?.offers;
       if (offers) {
         const price = offers.price || (offers[0] && offers[0].price);
-        if (price) return parseFloat(price);
+        if (price) jsonLdPrice = parseFloat(price);
       }
     } catch (e) {}
   });
+  if (jsonLdPrice && jsonLdPrice > 0 && jsonLdPrice < 1000000) return jsonLdPrice;
 
   // Strategy 2: dataLayer / GTM ecommerce data
-  const scriptContent = html;
-  const dataLayerMatch = scriptContent.match(/["']price["']\s*:\s*["']?([\d.,]+)["']?/);
+  const dataLayerMatch = html.match(/["']price["']\s*:\s*["']?([\d.,]+)["']?/);
   if (dataLayerMatch) {
     const price = parseFloat(dataLayerMatch[1].replace(',', ''));
     if (price > 0 && price < 1000000) return price;
@@ -223,9 +403,12 @@ function extractPriceFromHTML(html, brand) {
   // Strategy 3: meta tags
   const metaPrice = $('meta[property="product:price:amount"]').attr('content') ||
                     $('meta[property="og:price:amount"]').attr('content');
-  if (metaPrice) return parseFloat(metaPrice);
+  if (metaPrice) {
+    const p = parseFloat(metaPrice);
+    if (p > 0 && p < 1000000) return p;
+  }
 
-  // Strategy 4: Common price CSS patterns
+  // Strategy 4: Common price CSS selectors
   const priceSelectors = [
     '.product-price', '.price', '.product__price', '.pdp-price',
     '[data-price]', '.current-price', '.sales-price', '.offer-price',
@@ -240,14 +423,14 @@ function extractPriceFromHTML(html, brand) {
     }
   }
 
-  // Strategy 5: Regex for EUR price patterns in HTML
+  // Strategy 5: Regex — €/EUR followed by amount
   const eurMatch = html.match(/(?:€|EUR)\s*([\d\s.,]+)/);
   if (eurMatch) {
     const price = parseFloat(eurMatch[1].replace(/[\s,]/g, '').replace(',', '.'));
     if (price > 0 && price < 1000000) return price;
   }
 
-  // Strategy 6: Reverse pattern (price then EUR/€)
+  // Strategy 6: Regex — amount followed by €/EUR
   const priceEurMatch = html.match(/([\d\s.,]+)\s*(?:€|EUR)/);
   if (priceEurMatch) {
     const price = parseFloat(priceEurMatch[1].replace(/[\s,]/g, '').replace(',', '.'));
@@ -266,46 +449,44 @@ function extractNameFromHTML(html) {
   return null;
 }
 
-// ─── Auto-detect brand from reference format ───
+
+// ═══════════════════════════════════════════════════════════
+// Brand detection & fallback URLs
+// ═══════════════════════════════════════════════════════════
+
 function detectBrand(ref) {
   ref = ref.trim().toUpperCase();
-  // Longines: starts with L followed by digit (e.g., L3.742.4.96.6)
   if (/^L\d/.test(ref)) return 'longines';
-  // Tudor: starts with M followed by digits, or 5-digit number (e.g., M79230N-0001, 79230)
   if (/^M\d{3,}/.test(ref)) return 'tudor';
   if (/^\d{5}/.test(ref) && !ref.includes('.')) return 'tudor';
-  // Hublot: pattern like 441.NX.1171.RX (digits.letters.digits.letters)
   if (/^\d{3}\.\w{2}\.\d{3,4}\.\w{2}/.test(ref)) return 'hublot';
-  // Chopard: 6+ digits optionally with hyphen (e.g., 278602-3003)
   if (/^\d{5,}/.test(ref)) return 'chopard';
   return null;
 }
 
-// ─── Fallback URLs for manual lookup ───
 function getFallbackUrl(brand, ref) {
   const encoded = encodeURIComponent(ref);
-  // For Tudor: ref like M7941A1A0NU-0002 → build direct product page link
-  const tudorRef = ref.toLowerCase();
   switch (brand) {
     case 'chopard':
       return `https://www.chopard.com/fr-fr/search?q=${encoded}`;
     case 'longines':
-      // Direct Google search scoped to Longines France
       return `https://www.google.com/search?q=site:longines.com/fr+"${encoded}"`;
     case 'tudor':
-      // Direct link to Tudor website — user can set country to France for EUR prices
       return `https://www.google.com/search?q=site:tudorwatch.com+"${encoded}"`;
     case 'hublot':
-      // Hublot France search
       return `https://www.google.com/search?q=Hublot+"${encoded}"+prix+EUR+france`;
     default:
       return `https://www.google.com/search?q="${encoded}"+prix+EUR+france`;
   }
 }
 
-// ─── Main API handler ───
+
+// ═══════════════════════════════════════════════════════════
+// Main API handler
+// ═══════════════════════════════════════════════════════════
+
 module.exports = async (req, res) => {
-  // CORS headers
+  // CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -332,29 +513,36 @@ module.exports = async (req, res) => {
   console.log(`[price] Looking up ${brand} ref: ${ref}`);
 
   let result = null;
+  let source = null;
 
+  // ── Phase 1: Direct HTTP fetch (fast, free) ──
   try {
     switch (brand) {
-      case 'chopard':
-        result = await getChopardPrice(ref);
-        break;
-      case 'longines':
-        result = await getLonginesPrice(ref);
-        break;
-      case 'tudor':
-        result = await getTudorPrice(ref);
-        break;
-      case 'hublot':
-        result = await getHublotPrice(ref);
-        break;
+      case 'chopard':  result = await getChopardPrice(ref); break;
+      case 'longines': result = await getLonginesPrice(ref); break;
+      case 'tudor':    result = await getTudorPrice(ref);    break;
+      case 'hublot':   result = await getHublotPrice(ref);   break;
       default:
         return res.status(400).json({ error: `Unknown brand: ${brand}` });
     }
+    if (result) source = 'direct';
   } catch (e) {
-    console.error(`[price] Error for ${brand}/${ref}:`, e.message);
+    console.error(`[price] Phase 1 error for ${brand}/${ref}:`, e.message);
   }
 
+  // ── Phase 2: Browserless.io headless browser (fallback) ──
+  if (!result && brand !== 'chopard') {
+    try {
+      result = await getBrowserlessPrice(brand, ref);
+      if (result) source = 'browserless';
+    } catch (e) {
+      console.error(`[price] Phase 2 error for ${brand}/${ref}:`, e.message);
+    }
+  }
+
+  // ── Response ──
   if (result) {
+    console.log(`[price] ✓ Found ${brand}/${ref} via ${source}: ${result.price} EUR`);
     return res.status(200).json({
       success: true,
       brand,
@@ -362,8 +550,10 @@ module.exports = async (req, res) => {
       eurPrice: result.price,
       currency: result.currency,
       name: result.name,
+      source, // 'direct' or 'browserless'
     });
   } else {
+    console.log(`[price] ✗ No price found for ${brand}/${ref}`);
     return res.status(200).json({
       success: false,
       brand,
