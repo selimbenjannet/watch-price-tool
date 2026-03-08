@@ -1,12 +1,14 @@
 {
   "name": "watch-price-tool",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
   "scripts": {
     "dev": "vercel dev"
   },
   "dependencies": {
     "node-fetch": "^2.7.0",
-    "cheerio": "^1.0.0"
+    "cheerio": "^1.0.0",
+    "puppeteer-core": "^21.11.0",
+    "@sparticuz/chromium": "^119.0.2"
   }
 }
