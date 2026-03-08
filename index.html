@@ -258,6 +258,11 @@
   }
   .empty-msg { color: var(--text-muted); font-size: 12px; text-align: center; padding: 8px; }
 
+  .loading-phase2 {
+    font-size: 11px; color: var(--gold); margin-top: 8px;
+    animation: fadeUp .4s ease;
+  }
+
   @keyframes fadeUp {
     from { opacity: 0; transform: translateY(10px); }
     to { opacity: 1; transform: translateY(0); }
@@ -311,7 +316,8 @@
   <!-- Loading -->
   <div class="loading" id="loadingBox">
     <div class="spinner"></div>
-    <div class="loading-text">Recherche sur le site <span id="loadingBrand"></span>...</div>
+    <div class="loading-text" id="loadingText">Recherche sur le site <span id="loadingBrand"></span>...</div>
+    <div class="loading-phase2" id="loadingPhase2" style="display:none">Recherche approfondie en cours...</div>
   </div>
 
   <!-- Auto result -->
@@ -402,6 +408,8 @@
   }
 
   // ─── Main lookup ───
+  let phase2Timer = null;
+
   async function lookupPrice() {
     const ref = document.getElementById('refInput').value.trim();
     if (!ref) return;
@@ -416,12 +424,21 @@
     hide('fallbackCard');
     show('loadingBox');
     document.getElementById('loadingBrand').textContent = BRAND_NAMES[brand];
+    document.getElementById('loadingText').style.display = '';
+    document.getElementById('loadingPhase2').style.display = 'none';
     document.getElementById('searchBtn').disabled = true;
+
+    // After 3s, show "deep search" message (Phase 2 = Browserless)
+    if (phase2Timer) clearTimeout(phase2Timer);
+    phase2Timer = setTimeout(() => {
+      document.getElementById('loadingPhase2').style.display = '';
+    }, 3000);
 
     try {
       const res = await fetch(`/api/price?ref=${encodeURIComponent(ref)}&brand=${brand}`);
       const data = await res.json();
 
+      clearTimeout(phase2Timer);
       hide('loadingBox');
       document.getElementById('searchBtn').disabled = false;
 
@@ -431,6 +448,7 @@
         showFallback(ref, brand, data.fallbackUrl);
       }
     } catch (err) {
+      clearTimeout(phase2Timer);
       hide('loadingBox');
       document.getElementById('searchBtn').disabled = false;
       showFallback(ref, brand, `https://www.google.com/search?q="${encodeURIComponent(ref)}"+prix+EUR+france`);
