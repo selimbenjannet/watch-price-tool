@@ -14,14 +14,17 @@ const HEADERS = {
 // ─── Chopard: SFCC API (confirmed working) ───
 async function getChopardPrice(ref) {
   const url = `https://www.chopard.com/on/demandware.store/Sites-chopard-Site/fr_FR/Product-Variation?pid=${encodeURIComponent(ref)}&format=ajax`;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 7000);
   const res = await fetch(url, {
     headers: {
       ...HEADERS,
       'Accept': 'application/json, text/javascript, */*; q=0.01',
       'X-Requested-With': 'XMLHttpRequest',
     },
-    timeout: 10000,
+    signal: controller.signal,
   });
+  clearTimeout(timeout);
 
   if (!res.ok) return null;
 
@@ -48,7 +51,40 @@ async function getChopardPrice(ref) {
   return null;
 }
 
-// ─── Longines: try product page with collection name matching ───
+// ─── Helper: race all fetches with a global timeout ───
+async function raceWithTimeout(promises, timeoutMs) {
+  return Promise.race([
+    Promise.any(promises).catch(() => null),
+    new Promise(resolve => setTimeout(() => resolve(null), timeoutMs)),
+  ]);
+}
+
+// ─── Helper: try to fetch a URL and extract price ───
+async function tryFetchPrice(url, brand) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 4000);
+  try {
+    const res = await fetch(url, {
+      headers: HEADERS,
+      redirect: 'follow',
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const html = await res.text();
+    const price = extractPriceFromHTML(html, brand);
+    if (price) {
+      const name = extractNameFromHTML(html) || null;
+      return { price, currency: 'EUR', name };
+    }
+    throw new Error('No price found');
+  } catch (e) {
+    clearTimeout(timeout);
+    throw e;
+  }
+}
+
+// ─── Longines: try ALL collection URLs in parallel ───
 const LONGINES_COLLECTIONS = [
   'hydroconquest', 'master-collection', 'spirit', 'conquest',
   'elegant-collection', 'dolcevita', 'heritage-classic',
@@ -62,35 +98,22 @@ async function getLonginesPrice(ref) {
   // Convert ref like "L3.742.4.96.6" to URL format "l3-742-4-96-6"
   const refFormatted = ref.toLowerCase().replace(/\./g, '-');
 
-  // Try each collection
-  for (const collection of LONGINES_COLLECTIONS) {
+  // Fire ALL collection URLs in parallel — first success wins
+  const attempts = LONGINES_COLLECTIONS.map(collection => {
     const url = `https://www.longines.com/fr/p/watch-${collection}-${refFormatted}`;
-    try {
-      const res = await fetch(url, { headers: HEADERS, redirect: 'follow', timeout: 8000 });
-      if (res.ok) {
-        const html = await res.text();
-        const price = extractPriceFromHTML(html, 'longines');
-        if (price) {
-          const name = extractNameFromHTML(html) || ref;
-          return { price, currency: 'EUR', name };
-        }
-      }
-    } catch (e) {
-      continue;
-    }
+    return tryFetchPrice(url, 'longines');
+  });
+
+  // Also try the ecommerce API search in parallel
+  attempts.push(
+    tryFetchPrice(`https://api.ecom.longines.com/fr/search?q=${encodeURIComponent(ref)}`, 'longines')
+  );
+
+  // Race: return first successful result, or null after 7s
+  const result = await raceWithTimeout(attempts, 7000);
+  if (result) {
+    return { ...result, name: result.name || ref };
   }
-
-  // Fallback: try the Longines ecommerce API search
-  try {
-    const searchUrl = `https://api.ecom.longines.com/fr/search?q=${encodeURIComponent(ref)}`;
-    const res = await fetch(searchUrl, { headers: HEADERS, timeout: 8000 });
-    if (res.ok) {
-      const html = await res.text();
-      const price = extractPriceFromHTML(html, 'longines');
-      if (price) return { price, currency: 'EUR', name: ref };
-    }
-  } catch (e) {}
-
   return null;
 }
 
@@ -106,57 +129,34 @@ async function getTudorPrice(ref) {
   // Tudor refs like "M79230N-0001" → "m79230n-0001"
   const refFormatted = ref.toLowerCase();
 
-  for (const collection of TUDOR_COLLECTIONS) {
+  // Fire ALL collection URLs in parallel — first success wins
+  const attempts = TUDOR_COLLECTIONS.map(collection => {
     const url = `https://www.tudorwatch.com/fr/watches/${collection}/${refFormatted}`;
-    try {
-      const res = await fetch(url, { headers: HEADERS, redirect: 'follow', timeout: 8000 });
-      if (res.ok) {
-        const html = await res.text();
-        const price = extractPriceFromHTML(html, 'tudor');
-        if (price) {
-          const name = extractNameFromHTML(html) || ref;
-          return { price, currency: 'EUR', name };
-        }
-      }
-    } catch (e) {
-      continue;
-    }
-  }
+    return tryFetchPrice(url, 'tudor');
+  });
 
+  // Race: return first successful result, or null after 7s
+  const result = await raceWithTimeout(attempts, 7000);
+  if (result) {
+    return { ...result, name: result.name || ref };
+  }
   return null;
 }
 
 // ─── Hublot: search-based approach ───
 async function getHublotPrice(ref) {
-  // Try the Hublot search/find page
-  const searchUrl = `https://www.hublot.com/fr-fr/find-your-hublot?query=${encodeURIComponent(ref)}`;
-  try {
-    const res = await fetch(searchUrl, { headers: HEADERS, redirect: 'follow', timeout: 10000 });
-    if (res.ok) {
-      const html = await res.text();
-      const price = extractPriceFromHTML(html, 'hublot');
-      if (price) {
-        const name = extractNameFromHTML(html) || ref;
-        return { price, currency: 'EUR', name };
-      }
-    }
-  } catch (e) {}
-
-  // Fallback: try direct product page patterns
   const refSlug = ref.toLowerCase().replace(/\./g, '-');
-  const url = `https://www.hublot.com/fr-fr/watches/${refSlug}`;
-  try {
-    const res = await fetch(url, { headers: HEADERS, redirect: 'follow', timeout: 8000 });
-    if (res.ok) {
-      const html = await res.text();
-      const price = extractPriceFromHTML(html, 'hublot');
-      if (price) {
-        const name = extractNameFromHTML(html) || ref;
-        return { price, currency: 'EUR', name };
-      }
-    }
-  } catch (e) {}
 
+  // Try both search and direct URL in parallel
+  const attempts = [
+    tryFetchPrice(`https://www.hublot.com/fr-fr/find-your-hublot?query=${encodeURIComponent(ref)}`, 'hublot'),
+    tryFetchPrice(`https://www.hublot.com/fr-fr/watches/${refSlug}`, 'hublot'),
+  ];
+
+  const result = await raceWithTimeout(attempts, 7000);
+  if (result) {
+    return { ...result, name: result.name || ref };
+  }
   return null;
 }
 
